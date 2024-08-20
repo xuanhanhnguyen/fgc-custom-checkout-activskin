@@ -6,19 +6,18 @@ import {
   TextBlock,
 } from "@shopify/ui-extensions-react/checkout";
 
-// 1. Choose an extension target
-const ThankYou = reactExtension("purchase.thank-you.block.render", () => (
+const thankyou = reactExtension("purchase.thank-you.block.render", () => (
   <GtsBlock />
 ));
 
-export { ThankYou };
+export { thankyou };
 
-const OrderStatus = reactExtension(
+const orderStatus = reactExtension(
   "customer-account.order-status.block.render",
-  () => <GtsBlock />,
+  () => <GtsBlock />
 );
 
-export { OrderStatus };
+export { orderStatus };
 
 function GtsBlock() {
   // 2. Use the extension API to gather context from the checkout and shop
@@ -26,7 +25,6 @@ function GtsBlock() {
 
   const {
     cost,
-    shop,
     i18n,
     localization,
     lines,
@@ -43,7 +41,9 @@ function GtsBlock() {
     if (date_today.getDay() == 0) {
       date_today.setDate(date_today.getDate() + 1);
     }
-    return `${date_today.getFullYear()}-${date_today.getMonth() + 1}-${date_today.getDate()}`;
+    return `${date_today.getFullYear()}-${
+      date_today.getMonth() + 1
+    }-${date_today.getDate()}`;
   }
 
   const shippingDays = 1;
@@ -58,9 +58,11 @@ function GtsBlock() {
       cost.totalTaxAmount.current.amount +
       cost.totalShippingAmount.current.amount);
 
+  console.log("Checkout gts ui", api, discount);
+
   // 3. Render a UI
   return (
-    <BlockStack display={"none"}>
+    <BlockStack display={'none'}>
       <TextBlock id="gts-order" translate="no">
         <Text id="gts-o-id">{orderConfirmation?.current?.number}</Text>
         <Text id="gts-o-domain">activeskin.com.au</Text>

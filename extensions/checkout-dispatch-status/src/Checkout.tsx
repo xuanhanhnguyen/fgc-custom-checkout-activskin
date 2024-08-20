@@ -42,7 +42,7 @@ function Extension() {
 
     if (!isFreeGift && !hasDispatchStatus) {
       const status = attributes?.find((v) => v?.key === "_status")?.value || "";
-      let _dispatch: string = "Expected to ship in 3-5 business days";
+      let _dispatch: string = "";
       switch (status) {
         case "Dispatches in 7 business days":
           _dispatch = "Expected to ship in 7 business days";

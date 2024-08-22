@@ -64,7 +64,7 @@ function Extension() {
           break;
       }
       setDispatch(_dispatch);
-      console.log({ data, attributes });
+      // console.log({ data, attributes });
     }
   }, [attributes]);
 

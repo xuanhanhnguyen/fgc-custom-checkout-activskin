@@ -35,12 +35,12 @@ function Extension() {
   } = useTarget();
 
   useEffect(() => {
-    const isFreeGift =
-      attributes?.find((v) => v?.key === "_rule_id")?.value || "";
+    const isFreeSamples =
+      attributes?.find((v) => v?.key === "_isFreeSamples")?.value || "";
     const hasDispatchStatus =
       attributes?.find((v) => v?.key === "Dispatch status")?.value || "";
 
-    if (!isFreeGift && !hasDispatchStatus) {
+    if (!isFreeSamples && !hasDispatchStatus) {
       const status = attributes?.find((v) => v?.key === "_status")?.value || "";
       let _dispatch: string = "";
       switch (status) {

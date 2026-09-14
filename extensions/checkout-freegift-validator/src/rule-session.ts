@@ -30,11 +30,49 @@ type StoredSession = {
   rules?: FreeGiftRule[];
 };
 
+type ValidationProgress = {
+  validatedSignature?: string;
+  acknowledgementSignature?: string;
+};
+
 export type RuleLoadResult =
   | {status: "success"; rulesById: Map<string, FreeGiftRule>}
   | {status: "unavailable"; error?: unknown};
 
 const sessions = new Map<string, RuntimeSession>();
+const validationProgress = new Map<string, ValidationProgress>();
+
+export function isCheckoutAlreadyValidated(
+  checkoutToken: string | undefined,
+  signature: string,
+) {
+  return getValidationProgress(checkoutToken).validatedSignature === signature;
+}
+
+export function recordValidatedCheckout(
+  checkoutToken: string | undefined,
+  signature: string,
+  removedCount: number,
+) {
+  const progress = getValidationProgress(checkoutToken);
+  progress.validatedSignature = signature;
+  if (removedCount > 0) {
+    progress.acknowledgementSignature = signature;
+  }
+}
+
+export function needsRemovalAcknowledgement(
+  checkoutToken: string | undefined,
+  signature: string,
+) {
+  return (
+    getValidationProgress(checkoutToken).acknowledgementSignature === signature
+  );
+}
+
+export function acknowledgeRemovedGifts(checkoutToken: string | undefined) {
+  getValidationProgress(checkoutToken).acknowledgementSignature = undefined;
+}
 
 export async function loadPrismicRulesForCheckout({
   ruleIds,
@@ -110,6 +148,23 @@ export async function loadPrismicRulesForCheckout({
 
 function getSessionKey(checkoutToken?: string) {
   return checkoutToken || PENDING_CHECKOUT_KEY;
+}
+
+function getValidationProgress(checkoutToken?: string) {
+  const sessionKey = getSessionKey(checkoutToken);
+  let progress = validationProgress.get(sessionKey);
+  if (!progress && checkoutToken) {
+    progress = validationProgress.get(PENDING_CHECKOUT_KEY);
+    if (progress) {
+      validationProgress.delete(PENDING_CHECKOUT_KEY);
+      validationProgress.set(sessionKey, progress);
+    }
+  }
+  if (!progress) {
+    progress = {};
+    validationProgress.set(sessionKey, progress);
+  }
+  return progress;
 }
 
 function getRuntimeSession(sessionKey: string, checkoutToken?: string) {
@@ -197,4 +252,5 @@ function isStoredSession(value: unknown): value is StoredSession {
 
 export function resetRuleSessionsForTests() {
   sessions.clear();
+  validationProgress.clear();
 }

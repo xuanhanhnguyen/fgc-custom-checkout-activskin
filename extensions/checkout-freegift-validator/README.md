@@ -10,6 +10,12 @@ retries once when the buyer submits the final checkout step. If that request
 also fails, checkout is allowed and the order receives a `Cart validation
 error` custom attribute so the merchant can review it in Shopify Admin.
 
+Validation starts in the background when checkout loads. Intermediate checkout
+steps do not wait for an in-flight validation, while the final submit action
+does. A successfully validated cart is not validated again unless its line
+signature changes. If invalid gifts are removed, checkout is blocked once to
+show the buyer the removal message; the unchanged cart passes on the next click.
+
 The extension uses the static `purchase.checkout.actions.render-before` target
 so it runs before the action buttons on every checkout step. After deployment,
 set the read-only `prismicAccessToken` setting and grant the extension permission

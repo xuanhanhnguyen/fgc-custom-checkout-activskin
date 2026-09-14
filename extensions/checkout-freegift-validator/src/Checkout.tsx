@@ -11,7 +11,13 @@ import {
   hasPotentialFreeGift,
 } from "./logic";
 import {fetchCatalogEntries, fetchPrismicRules} from "./services";
-import {loadPrismicRulesForCheckout} from "./rule-session";
+import {
+  acknowledgeRemovedGifts,
+  isCheckoutAlreadyValidated,
+  loadPrismicRulesForCheckout,
+  needsRemovalAcknowledgement,
+  recordValidatedCheckout,
+} from "./rule-session";
 import type {CartLine, InterceptorRequest} from "@shopify/ui-extensions/checkout";
 
 const VALIDATION_ERROR_ATTRIBUTE = "Cart validation error";
@@ -58,6 +64,7 @@ function FreeGiftValidator() {
   const canBlockCheckout = useExtensionCapability("block_progress");
   const lines = shopify.lines.value;
   const lineSignature = createLineSignature(lines);
+  const checkoutToken = shopify.checkoutToken.value;
   const accessToken = String(
     shopify.settings.value.prismicAccessToken ?? "",
   ).trim();
@@ -76,20 +83,58 @@ function FreeGiftValidator() {
       return result;
     }
 
-    const task = inspectAndRepair(accessToken, finalAttempt).finally(() => {
-      validationInFlight.current = null;
-    });
+    const task = inspectAndRepair(accessToken, finalAttempt)
+      .then((result) => {
+        if (result.status === "validated" && result.valid) {
+          recordValidatedCheckout(
+            shopify.checkoutToken.value,
+            createLineSignature(shopify.lines.value),
+            result.removedCount,
+          );
+        }
+        return result;
+      })
+      .finally(() => {
+        validationInFlight.current = null;
+      });
     validationInFlight.current = {finalAttempt, promise: task};
     return task;
   };
 
   useBuyerJourneyIntercept(async ({canBlockProgress}) => {
-    if (!hasPotentialFreeGift(shopify.lines.value)) {
+    const currentLines = shopify.lines.value;
+    const currentSignature = createLineSignature(currentLines);
+    const currentCheckoutToken = shopify.checkoutToken.value;
+
+    if (needsRemovalAcknowledgement(currentCheckoutToken, currentSignature)) {
+      const message = shopify.i18n.translate("invalidGiftsRemoved");
+      const acknowledge = () => {
+        acknowledgeRemovedGifts(currentCheckoutToken);
+        setNotice({tone: "warning", message});
+      };
+      return canBlockProgress
+        ? blockCheckout(message, acknowledge)
+        : {behavior: "allow", perform: acknowledge};
+    }
+
+    if (
+      isCheckoutAlreadyValidated(currentCheckoutToken, currentSignature) ||
+      !hasPotentialFreeGift(currentLines)
+    ) {
+      return {behavior: "allow"};
+    }
+
+    const finalAttempt = isFinalCheckoutStep();
+    if (!finalAttempt) {
+      if (!validationInFlight.current) {
+        void validateAndRepair(false).then(updateNoticeFromValidation).catch(
+          showUnexpectedValidationError,
+        );
+      }
       return {behavior: "allow"};
     }
 
     try {
-      const finalAttempt = isFinalCheckoutStep();
       const result = await validateAndRepair(finalAttempt);
 
       if (result.status === "unavailable") {
@@ -113,11 +158,15 @@ function FreeGiftValidator() {
 
       if (result.valid) {
         const message = shopify.i18n.translate("invalidGiftsRemoved");
+        const acknowledge = () => {
+          acknowledgeRemovedGifts(shopify.checkoutToken.value);
+          setNotice({tone: "warning", message});
+        };
         return canBlockProgress
-          ? blockCheckout(message, () => setNotice({tone: "warning", message}))
+          ? blockCheckout(message, acknowledge)
           : {
               behavior: "allow",
-              perform: () => setNotice({tone: "warning", message}),
+              perform: acknowledge,
             };
       }
 
@@ -141,6 +190,19 @@ function FreeGiftValidator() {
   });
 
   useEffect(() => {
+    if (needsRemovalAcknowledgement(checkoutToken, lineSignature)) {
+      setNotice({
+        tone: "warning",
+        message: shopify.i18n.translate("invalidGiftsRemoved"),
+      });
+      return;
+    }
+
+    if (isCheckoutAlreadyValidated(checkoutToken, lineSignature)) {
+      setNotice(null);
+      return;
+    }
+
     if (!hasPotentialFreeGift(lines)) {
       setNotice(null);
       return;
@@ -150,39 +212,47 @@ function FreeGiftValidator() {
     validateAndRepair(false)
       .then((result) => {
         if (cancelled) return;
-        if (result.status === "unavailable") {
-          console.error("Prismic free gift rules are unavailable", result.error);
-          setNotice({
-            tone: "warning",
-            message: shopify.i18n.translate("validationUnavailableAllowed"),
-          });
-        } else if (result.removedCount > 0) {
-          setNotice({
-            tone: "warning",
-            message: shopify.i18n.translate("invalidGiftsRemoved"),
-          });
-        } else if (!result.valid) {
-          setNotice({
-            tone: "critical",
-            message: shopify.i18n.translate("invalidGiftsCouldNotBeRemoved"),
-          });
-        } else {
-          setNotice(null);
-        }
+        updateNoticeFromValidation(result);
       })
       .catch((error) => {
         if (cancelled) return;
-        console.error("Free gift validation failed", error);
-        setNotice({
-          tone: "critical",
-          message: shopify.i18n.translate("validationUnavailable"),
-        });
+        showUnexpectedValidationError(error);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [lineSignature, accessToken]);
+  }, [lineSignature, accessToken, checkoutToken]);
+
+  function updateNoticeFromValidation(result: ValidationOutcome) {
+    if (result.status === "unavailable") {
+      console.error("Prismic free gift rules are unavailable", result.error);
+      setNotice({
+        tone: "warning",
+        message: shopify.i18n.translate("validationUnavailableAllowed"),
+      });
+    } else if (result.removedCount > 0) {
+      setNotice({
+        tone: "warning",
+        message: shopify.i18n.translate("invalidGiftsRemoved"),
+      });
+    } else if (!result.valid) {
+      setNotice({
+        tone: "critical",
+        message: shopify.i18n.translate("invalidGiftsCouldNotBeRemoved"),
+      });
+    } else {
+      setNotice(null);
+    }
+  }
+
+  function showUnexpectedValidationError(error: unknown) {
+    console.error("Free gift validation failed", error);
+    setNotice({
+      tone: "critical",
+      message: shopify.i18n.translate("validationUnavailable"),
+    });
+  }
 
   const editorType = shopify.extension.editor?.type;
   if (editorType === "checkout" && !canBlockCheckout) {

@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  acknowledgeRemovedGifts,
+  isCheckoutAlreadyValidated,
   loadPrismicRulesForCheckout,
+  needsRemovalAcknowledgement,
+  recordValidatedCheckout,
   resetRuleSessionsForTests,
 } from "../src/rule-session.ts";
 
@@ -113,4 +117,19 @@ test("does not loop after the final Prismic attempt also fails", async () => {
   await loadPrismicRulesForCheckout({...options, finalAttempt: true});
   await loadPrismicRulesForCheckout({...options, finalAttempt: true});
   assert.equal(calls, 2);
+});
+
+test("passes an unchanged validated cart and acknowledges removals only once", () => {
+  resetRuleSessionsForTests();
+  const checkoutToken = "checkout-4";
+  const signature = "validated-cart";
+
+  recordValidatedCheckout(checkoutToken, signature, 1);
+  assert.equal(isCheckoutAlreadyValidated(checkoutToken, signature), true);
+  assert.equal(needsRemovalAcknowledgement(checkoutToken, signature), true);
+
+  acknowledgeRemovedGifts(checkoutToken);
+  assert.equal(needsRemovalAcknowledgement(checkoutToken, signature), false);
+  assert.equal(isCheckoutAlreadyValidated(checkoutToken, signature), true);
+  assert.equal(isCheckoutAlreadyValidated(checkoutToken, "changed-cart"), false);
 });

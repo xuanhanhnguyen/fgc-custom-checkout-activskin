@@ -4,6 +4,12 @@ Validates Active Skin free gifts against the current checkout lines and Prismic
 rules. Invalid gifts are removed with Shopify's Checkout Cart Lines API. If a
 gift cannot be removed, Buyer Journey Intercept blocks checkout progress.
 
+Prismic rules are requested once and reused for the current checkout. A failed
+initial request is not retried on intermediate checkout steps. The extension
+retries once when the buyer submits the final checkout step. If that request
+also fails, checkout is allowed and the order receives a `Cart validation
+error` custom attribute so the merchant can review it in Shopify Admin.
+
 The extension uses the static `purchase.checkout.actions.render-before` target
 so it runs before the action buttons on every checkout step. After deployment,
 set the read-only `prismicAccessToken` setting and grant the extension permission

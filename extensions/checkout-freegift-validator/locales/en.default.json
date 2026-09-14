@@ -2,5 +2,6 @@
   "invalidGiftsRemoved": "An invalid free gift was removed. Please review your order and continue again.",
   "invalidGiftsCouldNotBeRemoved": "Your cart contains a free gift that is no longer eligible. Remove it before continuing.",
   "validationUnavailable": "We could not verify the free gift in your cart. Please try again before continuing.",
+  "validationUnavailableAllowed": "Free gift validation is temporarily unavailable. You can continue checkout; the store team will review the order.",
   "blockingCapabilityRequired": "Enable block progress for this extension so invalid free gifts cannot be purchased."
 }

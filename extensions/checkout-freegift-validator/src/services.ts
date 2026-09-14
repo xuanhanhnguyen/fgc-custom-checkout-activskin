@@ -1,12 +1,6 @@
 import type {CatalogEntry, FreeGiftRule} from "./logic";
 
 const PRISMIC_API_URL = "https://activeskin-gatsby.cdn.prismic.io/api/v2";
-const CACHE_TTL_MS = 30_000;
-let rulesCache: {
-  key: string;
-  createdAt: number;
-  value: Map<string, FreeGiftRule>;
-} | null = null;
 
 type PrismicProduct = {
   variants?: Array<{admin_graphql_api_id?: string}>;
@@ -43,14 +37,6 @@ export async function fetchPrismicRules(
   ruleIds: string[],
   accessToken: string,
 ): Promise<Map<string, FreeGiftRule>> {
-  const cacheKey = [...ruleIds].sort().join(",");
-  if (
-    rulesCache?.key === cacheKey &&
-    Date.now() - rulesCache.createdAt < CACHE_TTL_MS
-  ) {
-    return rulesCache.value;
-  }
-
   const api = new URL(PRISMIC_API_URL);
   api.searchParams.set("access_token", accessToken);
   const repository: {
@@ -72,14 +58,12 @@ export async function fetchPrismicRules(
   search.searchParams.set("access_token", accessToken);
 
   const response: {results?: PrismicDocument[]} = await fetchJson(search);
-  const value = new Map(
+  return new Map(
     (response.results ?? []).map((document) => [
       document.id,
       normalizePrismicRule(document),
     ]),
   );
-  rulesCache = {key: cacheKey, createdAt: Date.now(), value};
-  return value;
 }
 
 export async function fetchCatalogEntries(

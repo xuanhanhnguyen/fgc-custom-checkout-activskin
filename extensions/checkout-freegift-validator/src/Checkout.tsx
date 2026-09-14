@@ -11,7 +11,12 @@ import {
   hasPotentialFreeGift,
 } from "./logic";
 import {fetchCatalogEntries, fetchPrismicRules} from "./services";
+import {loadPrismicRulesForCheckout} from "./rule-session";
 import type {CartLine, InterceptorRequest} from "@shopify/ui-extensions/checkout";
+
+const VALIDATION_ERROR_ATTRIBUTE = "Cart validation error";
+const VALIDATION_ERROR_VALUE =
+  "Unable to retrieve data from Prismic; free gift validation was skipped.";
 
 type Notice = {
   tone: "critical" | "warning";
@@ -27,10 +32,18 @@ type InvalidLine = {
 };
 
 type ValidationResult = {
+  status: "validated";
   valid: boolean;
   removedCount: number;
   invalidLines: InvalidLine[];
 };
+
+type ValidationUnavailable = {
+  status: "unavailable";
+  error?: unknown;
+};
+
+type ValidationOutcome = ValidationResult | ValidationUnavailable;
 
 export default function extension() {
   render(<FreeGiftValidator />, document.body);
@@ -38,7 +51,10 @@ export default function extension() {
 
 function FreeGiftValidator() {
   const [notice, setNotice] = useState<Notice | null>(null);
-  const validationInFlight = useRef<Promise<ValidationResult> | null>(null);
+  const validationInFlight = useRef<{
+    finalAttempt: boolean;
+    promise: Promise<ValidationOutcome>;
+  } | null>(null);
   const canBlockCheckout = useExtensionCapability("block_progress");
   const lines = shopify.lines.value;
   const lineSignature = createLineSignature(lines);
@@ -46,13 +62,24 @@ function FreeGiftValidator() {
     shopify.settings.value.prismicAccessToken ?? "",
   ).trim();
 
-  const validateAndRepair = () => {
-    if (validationInFlight.current) return validationInFlight.current;
+  const validateAndRepair = async (finalAttempt: boolean) => {
+    const inFlight = validationInFlight.current;
+    if (inFlight) {
+      const result = await inFlight.promise;
+      if (
+        finalAttempt &&
+        !inFlight.finalAttempt &&
+        result.status === "unavailable"
+      ) {
+        return validateAndRepair(true);
+      }
+      return result;
+    }
 
-    const task = inspectAndRepair(accessToken).finally(() => {
+    const task = inspectAndRepair(accessToken, finalAttempt).finally(() => {
       validationInFlight.current = null;
     });
-    validationInFlight.current = task;
+    validationInFlight.current = {finalAttempt, promise: task};
     return task;
   };
 
@@ -62,7 +89,23 @@ function FreeGiftValidator() {
     }
 
     try {
-      const result = await validateAndRepair();
+      const finalAttempt = isFinalCheckoutStep();
+      const result = await validateAndRepair(finalAttempt);
+
+      if (result.status === "unavailable") {
+        console.error("Prismic free gift rules are unavailable", result.error);
+        if (finalAttempt) {
+          await markValidationUnavailableOnOrder();
+        }
+        return {
+          behavior: "allow",
+          perform: () =>
+            setNotice({
+              tone: "warning",
+              message: shopify.i18n.translate("validationUnavailableAllowed"),
+            }),
+        };
+      }
 
       if (result.valid && result.removedCount === 0) {
         return {behavior: "allow"};
@@ -104,10 +147,16 @@ function FreeGiftValidator() {
     }
 
     let cancelled = false;
-    validateAndRepair()
+    validateAndRepair(false)
       .then((result) => {
         if (cancelled) return;
-        if (result.removedCount > 0) {
+        if (result.status === "unavailable") {
+          console.error("Prismic free gift rules are unavailable", result.error);
+          setNotice({
+            tone: "warning",
+            message: shopify.i18n.translate("validationUnavailableAllowed"),
+          });
+        } else if (result.removedCount > 0) {
           setNotice({
             tone: "warning",
             message: shopify.i18n.translate("invalidGiftsRemoved"),
@@ -152,18 +201,25 @@ function FreeGiftValidator() {
   );
 }
 
-async function inspectAndRepair(accessToken: string): Promise<ValidationResult> {
+async function inspectAndRepair(
+  accessToken: string,
+  finalAttempt: boolean,
+): Promise<ValidationOutcome> {
   const initialEvaluation = await inspectCheckout(
     shopify.lines.value,
     accessToken,
+    finalAttempt,
   );
 
+  if (initialEvaluation.status === "unavailable") return initialEvaluation;
+
   if (initialEvaluation.invalidLines.length === 0) {
-    return {valid: true, removedCount: 0, invalidLines: []};
+    return {status: "validated", valid: true, removedCount: 0, invalidLines: []};
   }
 
   if (!shopify.instructions.value.lines.canRemoveCartLine) {
     return {
+      status: "validated",
       valid: false,
       removedCount: 0,
       invalidLines: initialEvaluation.invalidLines,
@@ -189,33 +245,106 @@ async function inspectAndRepair(accessToken: string): Promise<ValidationResult> 
     removedCount += quantity;
   }
 
-  const finalEvaluation = await inspectCheckout(shopify.lines.value, accessToken);
+  const finalEvaluation = await inspectCheckout(
+    shopify.lines.value,
+    accessToken,
+    finalAttempt,
+  );
+  if (finalEvaluation.status === "unavailable") return finalEvaluation;
   return {
+    status: "validated",
     valid: finalEvaluation.invalidLines.length === 0,
     removedCount,
     invalidLines: finalEvaluation.invalidLines,
   };
 }
 
-async function inspectCheckout(lines: CartLine[], accessToken: string) {
+async function inspectCheckout(
+  lines: CartLine[],
+  accessToken: string,
+  finalAttempt: boolean,
+) {
   const ruleIds = getFreeGiftRuleIds(lines);
   if (ruleIds.length === 0) {
-    return evaluateFreeGifts({lines, rulesById: new Map(), catalogByVariant: new Map()});
+    return {
+      status: "validated" as const,
+      ...evaluateFreeGifts({
+        lines,
+        rulesById: new Map(),
+        catalogByVariant: new Map(),
+      }),
+    };
   }
 
   if (!accessToken) {
-    throw new Error("The Prismic access token is not configured");
+    return {
+      status: "unavailable" as const,
+      error: new Error("The Prismic access token is not configured"),
+    };
   }
 
   const paidVariantIds = lines
     .filter((line) => !getLineAttribute(line, "_rule_id"))
     .map((line) => line.merchandise.id);
-  const [rulesById, catalogByVariant] = await Promise.all([
-    fetchPrismicRules(ruleIds, accessToken),
-    fetchCatalogEntries(paidVariantIds, shopify.query),
+  const [rulesResult, catalogResult] = await Promise.all([
+    loadPrismicRulesForCheckout({
+      ruleIds,
+      accessToken,
+      checkoutToken: shopify.checkoutToken.value,
+      storage: shopify.storage,
+      finalAttempt,
+      fetchRules: fetchPrismicRules,
+    }),
+    fetchCatalogEntries(paidVariantIds, shopify.query).then(
+      (catalogByVariant) => ({status: "success" as const, catalogByVariant}),
+      (error) => ({status: "error" as const, error}),
+    ),
   ]);
 
-  return evaluateFreeGifts({lines, rulesById, catalogByVariant});
+  if (rulesResult.status === "unavailable") return rulesResult;
+  if (catalogResult.status === "error") throw catalogResult.error;
+
+  return {
+    status: "validated" as const,
+    ...evaluateFreeGifts({
+      lines,
+      rulesById: rulesResult.rulesById,
+      catalogByVariant: catalogResult.catalogByVariant,
+    }),
+  };
+}
+
+function isFinalCheckoutStep() {
+  const activeStep = shopify.buyerJourney.activeStep.value?.handle;
+  if (activeStep === "checkout") return true;
+
+  const hasReviewStep = shopify.buyerJourney.steps.value.some(
+    (step) => step.handle === "review",
+  );
+  return activeStep === (hasReviewStep ? "review" : "payment");
+}
+
+async function markValidationUnavailableOnOrder() {
+  if (!shopify.instructions.value.attributes.canUpdateAttributes) {
+    console.error("Checkout attributes cannot be updated for this checkout");
+    return;
+  }
+
+  try {
+    const result = await shopify.applyAttributeChange({
+      type: "updateAttribute",
+      key: VALIDATION_ERROR_ATTRIBUTE,
+      value: `${VALIDATION_ERROR_VALUE} ${new Date().toISOString()}`,
+    });
+    if (result.type === "error") {
+      console.error(
+        "Unable to add the validation error to the order",
+        result.message,
+      );
+    }
+  } catch (error) {
+    console.error("Unable to add the validation error to the order", error);
+  }
 }
 
 function findCurrentLine(invalidLine: InvalidLine) {

@@ -17,3 +17,9 @@ declare module './src/services.ts' {
   const shopify: import('@shopify/ui-extensions/purchase.checkout.actions.render-before').Api;
   const globalThis: { shopify: typeof shopify };
 }
+
+//@ts-ignore
+declare module './src/rule-session.ts' {
+  const shopify: import('@shopify/ui-extensions/purchase.checkout.actions.render-before').Api;
+  const globalThis: { shopify: typeof shopify };
+}

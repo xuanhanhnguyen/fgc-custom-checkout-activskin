@@ -2,5 +2,6 @@
   "invalidGiftsRemoved": "Un cadeau gratuit non valide a été supprimé. Vérifiez votre commande et continuez à nouveau.",
   "invalidGiftsCouldNotBeRemoved": "Votre panier contient un cadeau gratuit qui n'est plus éligible. Supprimez-le avant de continuer.",
   "validationUnavailable": "Nous n'avons pas pu vérifier le cadeau gratuit de votre panier. Réessayez avant de continuer.",
+  "validationUnavailableAllowed": "La validation du cadeau gratuit est temporairement indisponible. Vous pouvez continuer; l'équipe de la boutique vérifiera la commande.",
   "blockingCapabilityRequired": "Activez le blocage de la progression afin d'empêcher l'achat de cadeaux gratuits non valides."
 }

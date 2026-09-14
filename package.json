@@ -8,9 +8,14 @@
     "dev": "shopify app dev",
     "info": "shopify app info",
     "generate": "shopify app generate",
-    "deploy": "shopify app deploy"
+    "deploy": "shopify app deploy",
+    "test": "node --test extensions/*/test/*.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  },
   "trustedDependencies": [
     "@shopify/plugin-cloudflare"
   ],

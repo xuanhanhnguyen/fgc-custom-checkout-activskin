@@ -3,11 +3,12 @@
 
 # The version of APIs your extension will receive. Learn more:
 # https://shopify.dev/docs/api/usage/versioning
-api_version = "2024-07"
+api_version = "2026-01"
 
 [[extensions]]
 name = "Checkout validate address"
 handle = "checkout-validate-address"
+uid = "d0bb1ba4-f457-9ef1-deae-54d9d5337869e876df3f"
 type = "ui_extension"
 
 

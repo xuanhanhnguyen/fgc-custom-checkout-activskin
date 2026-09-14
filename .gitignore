@@ -17,6 +17,8 @@ logs
 
 # extensions build output
 extensions/*/build
+extensions/*/manifest.json
+extensions/*/dist/*.metafile.json
 
 # lock files
 .history

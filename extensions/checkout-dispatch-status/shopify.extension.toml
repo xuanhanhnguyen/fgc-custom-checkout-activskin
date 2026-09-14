@@ -3,11 +3,12 @@
 
 # The version of APIs your extension will receive. Learn more:
 # https://shopify.dev/docs/api/usage/versioning
-api_version = "2024-07"
+api_version = "2026-01"
 
 [[extensions]]
 name = "checkout dispatch status"
 handle = "checkout-dispatch-status"
+uid = "f98a248d-00e1-5f0e-edc7-b43cc56238099e1a6bc6"
 type = "ui_extension"
 
 
@@ -18,17 +19,14 @@ type = "ui_extension"
 [[extensions.targeting]]
 module = "./src/Checkout.tsx"
 target = "purchase.checkout.cart-line-item.render-after"
-export = "checkoutLineItem"
 
 [[extensions.targeting]]
 module = "./src/Checkout.tsx"
 target = "customer-account.order-status.cart-line-item.render-after"
-export = "orderLineItem"
 
 [[extensions.targeting]]
 module = "./src/Checkout.tsx"
 target = "purchase.thank-you.cart-line-item.render-after"
-export = "thankyouLineItem"
 
 [extensions.capabilities]
 # Gives your extension access to directly query Shopify’s storefront API.

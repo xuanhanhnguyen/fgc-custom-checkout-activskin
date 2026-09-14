@@ -3,11 +3,12 @@
 
 # The version of APIs your extension will receive. Learn more:
 # https://shopify.dev/docs/api/usage/versioning
-api_version = "2024-07"
+api_version = "2026-01"
 
 [[extensions]]
 name = "Checkout gts ui"
 handle = "checkout-gts-ui"
+uid = "f3383396-af6e-0be3-bb5a-bc40e9ab14359d1a6329"
 type = "ui_extension"
 
 
@@ -18,12 +19,10 @@ type = "ui_extension"
 [[extensions.targeting]]
 module = "./src/Checkout.tsx"
 target = "purchase.thank-you.block.render"
-export = "thankyou"
 
 [[extensions.targeting]]
 module = "./src/Checkout.tsx"
 target = "customer-account.order-status.block.render"
-export = "orderStatus"
 
 [extensions.capabilities]
 # Gives your extension access to directly query Shopify’s storefront API.
